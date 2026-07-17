@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>アイテム統計管理システム (公開版)</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #f4f4f9; }
+        .container { max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 8px; }
+        #historyTable { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        #historyTable th, #historyTable td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+        .charts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 30px; margin-top: 30px; }
+        .error-msg { color: red; font-weight: bold; padding: 10px; background: #fdf2f2; border: 1px solid #fde2e2; border-radius: 4px; margin-bottom: 20px; }
+        .loading-msg { color: #555; font-style: italic; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <h2>登録データ一覧</h2>
+    <div id="errorContainer"></div>
+    <div id="loadingStatus" class="loading-msg">データを読み込み中...</div>
+    <table id="historyTable"><thead><tr><th>日付</th></tr></thead><tbody id="historyBody"></tbody></table>
+
+<div class="container">
+    <h2>国別アイテム統計</h2>
+    <div id="chartsContainer" class="charts-grid"></div>
+</div>
+
+<script>
+    Chart.register(ChartDataLabels);
+
+    // ★★★ ご自身のGitHub環境に合わせて変更してください ★★★
+    const GITHUB_USER = "Meruem-beginner"; 
+    const GITHUB_REPO = "shonin";       
+    // 自動推測ロジックの最適化
+    const user = GITHUB_USER || location.hostname.split('.')[0];
+    // grand_line.html に名前が変わったため、パスの解析を安全に変更
+    let repo = GITHUB_REPO;
+    if (!repo) {
+        const pathParts = location.pathname.split('/');
+        repo = pathParts[1] && pathParts[1] !== 'grand_line.html' ? pathParts[1] : '';
+    }
+
+    const countries = ["博多", "開京", "明州", "泉州", "広州", "淡水", "安南", "ボニ", "タイ", "真臘", "スル", "三仏斉", "ジョホール", "大光国", "天竺", "セイロン", "ペルシャ", "大食国", "ミスル", "末羅国"];
+    const colorMap = {};
+
+    function getColor(itemName) {
+        if (!colorMap[itemName]) {
+            const h = Math.floor(Math.random() * 360);
+            colorMap[itemName] = `hsl(${h}, 70%, 60%)`;
+        }
+        return colorMap[itemName];
+    }
+
+    // GitHub APIを使用して json フォルダ内のファイル一覧を取得し、すべて読み込む
+    const apiUrl = `https://api.github.com/repos/${user}/${repo}/contents/json`;
+
+    fetch(apiUrl)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('GitHub上の「json」フォルダの取得に失敗しました。リポジトリ名やフォルダ配置を確認してください。');
+            }
+            return response.json();
+        })
+        .then(async files => {
+            // .json で終わるファイルだけをフィルター
+            const jsonFiles = files.filter(file => file.name.endsWith('.json'));
+            
+            if (jsonFiles.length === 0) {
+                throw new Error('jsonフォルダ内にJSONファイルが見つかりませんでした。');
+            }
+
+            let allMergedData = {};
+
+            // すべてのJSONファイルを非同期で取得して結合
+            for (const file of jsonFiles) {
+                try {
+                    // GitHub Pages上のキャッシュを避けるためタイムスタンプを付与して取得
+                    const res = await fetch(`${file.path}?t=${new Date().getTime()}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        // データの結合 (日付キーが重複している場合は上書き)
+                        allMergedData = { ...allMergedData, ...data };
+                    }
+                } catch (e) {
+                    console.error(`${file.name} の読み込みに失敗しました:`, e);
+                }
+            }
+
+            document.getElementById('loadingStatus').style.display = 'none';
+            updateAll(allMergedData);
+        })
+        .catch(error => {
+            document.getElementById('loadingStatus').style.display = 'none';
+            document.getElementById('errorContainer').innerHTML = `<div class="error-msg">${error.message}</div>`;
+            console.error(error);
+        });
+
+    function updateAll(allData) {
+        const historyBody = document.getElementById('historyBody');
+        historyBody.innerHTML = '';
+        
+        const dates = Object.keys(allData).sort();
+        if (dates.length === 0) {
+            historyBody.innerHTML = '<tr><td>データがありません</td></tr>';
+            return;
+        }
+
+        dates.forEach(date => {
+            historyBody.innerHTML += `<tr><td>${date}</td></tr>`;
+        });
+
+        const chartsContainer = document.getElementById('chartsContainer');
+        chartsContainer.innerHTML = '';
+        
+        countries.forEach(country => {
+            const counts = {};
+            Object.values(allData).forEach(day => { if(day[country]) counts[day[country]] = (counts[day[country]] || 0) + 1; });
+            
+            const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+
+            if (entries.length > 0) {
+                const total = entries.reduce((sum, [, count]) => sum + count, 0);
+                const div = document.createElement('div');
+                div.innerHTML = `<h4>${country}</h4><canvas id="c-${country}"></canvas>`;
+                chartsContainer.appendChild(div);
+                
+                new Chart(document.getElementById(`c-${country}`), {
+                    type: 'pie',
+                    data: {
+                        labels: entries.map(([name, count]) => `${name} (${Math.round(count/total*100)}%, ${count}回)`),
+                        datasets: [{ data: entries.map(([name, count]) => count), backgroundColor: entries.map(([name]) => getColor(name)) }]
+                    },
+                    options: { 
+                        plugins: { 
+                            legend: { position: 'bottom' },
+                            datalabels: {
+                                color: '#ffffff',
+                                font: {
+                                    weight: 'bold',
+                                    size: 13
+                                },
+                                textStrokeColor: 'rgba(0, 0, 0, 0.6)',
+                                textStrokeWidth: 2,
+                                formatter: (value, context) => {
+                                    if (context.dataIndex < 3) {
+                                        return entries[context.dataIndex][0];
+                                    }
+                                    return '';
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        });
+    }
+</script>
+</body>
+</html>

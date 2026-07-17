@@ -42,15 +42,43 @@
     }
 
     const countries = ["博多", "開京", "明州", "泉州", "広州", "淡水", "安南", "ボニ", "タイ", "真臘", "スル", "三仏斉", "ジョホール", "大光国", "天竺", "セイロン", "ペルシャ", "大食国", "ミスル", "末羅国"];
+    
+    // --- 変更点: 区別しやすい20色のパレットを用意 ---
+    const palette = [
+        "#e6194B", // 赤
+        "#4363d8", // 青
+        "#3cb44b", // 緑
+        "#f58231", // オレンジ
+        "#911eb4", // 紫
+        "#42d4f4", // シアン
+        "#f032e6", // マゼンタ
+        "#ffe119", // 黄色
+        "#bfef45", // ライム
+        "#fabebe", // ピンク
+        "#469990", // ティール（青緑）
+        "#e6beff", // ラベンダー
+        "#9A6324", // 茶色
+        "#fffac8", // クリーム
+        "#800000", // マルーン（栗色）
+        "#aaffc3", // ミント
+        "#808000", // オリーブ
+        "#ffd8b1", // コーラル
+        "#000075", // ネイビー
+        "#a9a9a9"  // グレー
+    ];
+    
     const colorMap = {};
+    let colorIndex = 0;
 
     function getColor(itemName) {
         if (!colorMap[itemName]) {
-            const h = Math.floor(Math.random() * 360);
-            colorMap[itemName] = `hsl(${h}, 70%, 60%)`;
+            // パレットの中から順番に色を割り当てる（20個を超えたら最初に戻る）
+            colorMap[itemName] = palette[colorIndex % palette.length];
+            colorIndex++;
         }
         return colorMap[itemName];
     }
+    // ------------------------------------------------
 
     // GitHub APIを使用して json フォルダ内のファイル一覧を取得し、すべて読み込む
     const apiUrl = `https://api.github.com/repos/${user}/${repo}/contents/json`;
@@ -140,7 +168,7 @@
                                     weight: 'bold',
                                     size: 13
                                 },
-                                textStrokeColor: 'rgba(0, 0, 0, 0.6)',
+                                textStrokeColor: 'rgba(0, 0, 0, 0.6)', // 黒い縁取りがあるので薄い色でも文字が読めます
                                 textStrokeWidth: 2,
                                 formatter: (value, context) => {
                                     if (context.dataIndex < 3) {
